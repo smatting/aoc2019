@@ -2,4 +2,6 @@ module Main (main) where
 
 import qualified Lib as Lib
 
-main = Lib.main
+import qualified Day3
+
+main = Day3.main

@@ -1,3 +1,7 @@
+{-|
+Description: https://adventofcode.com/2019/day/2
+-}
+
 {-# language LambdaCase #-}
 
 module Day2
@@ -27,7 +31,6 @@ runProgram k v =
       i3 <- v !? (k + 3)
       result <- op <$> v !? i1 <*> v !? i2
       return (v // [(i3, result)])
-
 
 runWithInput :: Int -> Int -> VU.Vector Int -> Int
 runWithInput a b v = fromMaybe 0 $ do

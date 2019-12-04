@@ -1,3 +1,7 @@
+{-|
+Description: https://adventofcode.com/2019/day/1
+-}
+
 module Day1
 
 where
