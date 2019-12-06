@@ -30,6 +30,7 @@
           (hsPkgs.raw-strings-qq)
           (hsPkgs.optics)
           (hsPkgs.rio)
+          (hsPkgs.polysemy)
           ];
         };
       exes = {

@@ -3,6 +3,7 @@
     {
       packages = {
         "optics-core".revision = (((hackage."optics-core")."0.1").revisions).default;
+        "first-class-families".revision = (((hackage."first-class-families")."0.5.0.0").revisions).default;
         "exceptions".revision = (((hackage."exceptions")."0.10.3").revisions).default;
         "rio".revision = (((hackage."rio")."0.1.12.0").revisions).default;
         "binary".revision = (((hackage."binary")."0.8.6.0").revisions).default;
@@ -14,8 +15,11 @@
         "unix".revision = (((hackage."unix")."2.7.2.2").revisions).default;
         "mtl".revision = (((hackage."mtl")."2.2.2").revisions).default;
         "rts".revision = (((hackage."rts")."1.0").revisions).default;
+        "unagi-chan".revision = (((hackage."unagi-chan")."0.4.1.2").revisions).default;
+        "unagi-chan".flags.compare-benchmarks = false;
         "megaparsec".revision = (((hackage."megaparsec")."7.0.5").revisions).default;
         "megaparsec".flags.dev = false;
+        "syb".revision = (((hackage."syb")."0.7.1").revisions).default;
         "scientific".revision = (((hackage."scientific")."0.3.6.2").revisions).default;
         "scientific".flags.integer-simple = false;
         "scientific".flags.bytestring-builder = false;
@@ -67,6 +71,8 @@
         "optics".revision = (((hackage."optics")."0.1").revisions).default;
         "typed-process".revision = (((hackage."typed-process")."0.2.6.0").revisions).default;
         "raw-strings-qq".revision = (((hackage."raw-strings-qq")."1.1").revisions).default;
+        "atomic-primops".revision = (((hackage."atomic-primops")."0.8.3").revisions).default;
+        "atomic-primops".flags.debug = false;
         "optics-extra".revision = (((hackage."optics-extra")."0.1").revisions).default;
         "parser-combinators".revision = (((hackage."parser-combinators")."1.2.0").revisions).default;
         "parser-combinators".flags.dev = false;
@@ -75,6 +81,7 @@
         "unordered-containers".flags.debug = false;
         "base".revision = (((hackage."base")."4.12.0.0").revisions).default;
         "time".revision = (((hackage."time")."1.8.0.2").revisions).default;
+        "type-errors-pretty".revision = (((hackage."type-errors-pretty")."0.0.0.0").revisions).default;
         "vector-algorithms".revision = (((hackage."vector-algorithms")."0.8.0.1").revisions).default;
         "vector-algorithms".flags.unsafechecks = false;
         "vector-algorithms".flags.internalchecks = false;
@@ -82,6 +89,9 @@
         "vector-algorithms".flags.boundschecks = true;
         "vector-algorithms".flags.bench = true;
         "vector-algorithms".flags.properties = true;
+        "polysemy".revision = (((hackage."polysemy")."1.2.0.0").revisions).default;
+        "polysemy".flags.dump-core = false;
+        "polysemy".flags.error-messages = true;
         "transformers".revision = (((hackage."transformers")."0.5.6.2").revisions).default;
         "hashable".revision = (((hackage."hashable")."1.3.0.0").revisions).default;
         "hashable".flags.sse2 = true;
@@ -104,6 +114,7 @@
         "aeson".flags.fast = false;
         "aeson".flags.bytestring-builder = false;
         "aeson".flags.developer = false;
+        "type-errors".revision = (((hackage."type-errors")."0.2.0.0").revisions).default;
         "ghc-boot-th".revision = (((hackage."ghc-boot-th")."8.6.5").revisions).default;
         "base-orphans".revision = (((hackage."base-orphans")."0.8.1").revisions).default;
         "th-abstraction".revision = (((hackage."th-abstraction")."0.3.1.0").revisions).default;
