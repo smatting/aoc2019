@@ -1,11 +1,14 @@
-{-# LANGUAGE GADTs, FlexibleContexts, TypeOperators, DataKinds, PolyKinds #-}
+{-# LANGUAGE ScopedTypeVariables, TupleSections #-}
+{-# LANGUAGE GADTs, FlexibleContexts, TypeOperators, DataKinds, PolyKinds, TypeApplications #-}
 module Day5
 where
 
+import Prelude hiding ((!!))
+
 import RIO
+import RIO.List
 import qualified RIO.Text as T
 import Control.Arrow ((>>>))
-import Data.Bits
 
 import qualified RIO.Vector.Unboxed as VU
 import RIO.Vector.Unboxed ((!?))
@@ -13,6 +16,7 @@ import RIO.Vector.Unboxed.Partial ((//))
 
 import Polysemy
 import Polysemy.State
+import Polysemy.Error
 
 data Program
   = Program 
@@ -21,9 +25,15 @@ data Program
     , running :: Bool
     , input :: [Int]
     , output :: [Int]
-    , debug :: Maybe Text
+    , debug :: Maybe ErrorMsg
     }
     deriving (Show, Eq, Ord)
+
+showt :: Show a => a -> Text
+showt = T.pack . show
+
+data ErrorMsg = ErrorMsg Text
+  deriving (Show, Eq, Ord)
 
 type MAddress = Int
 type MValue = Int
@@ -33,8 +43,45 @@ data ParameterMode
   | ImmMode
   deriving (Show, Eq, Ord)
 
-parseProblem :: Text -> [Int]
-parseProblem = T.split (== ',') >>> fmap (read . T.unpack)
+type Parameter = (ParameterMode, Int)
+
+assertIndex ::
+  Member (Error ErrorMsg) r =>
+  VU.Vector Int ->
+  Int ->
+  Sem r ()
+assertIndex v i
+  | 0 <= i && i < VU.length v = return ()
+  | otherwise = throw (ErrorMsg ("Intcode: Memory access error @ " <> showt i))
+
+writeMemory ::
+  Members [State Program, Error ErrorMsg] r =>
+  MAddress ->
+  MValue ->
+  Sem r ()
+writeMemory addr val = do
+  m <- gets memory
+  assertIndex m addr
+  modify (\s -> s {memory = m // [(addr, val)]})
+
+assertJust ::
+  Member (Error ErrorMsg) r =>
+  Text ->
+  Maybe a ->
+  Sem r a
+assertJust msg Nothing = throw (ErrorMsg msg)
+assertJust _ (Just x) = return x
+
+(!!) :: Member (Error ErrorMsg) r => VU.Vector Int -> Int -> Sem r Int
+(!!) v i = assertJust ("Intcode: Memory access error @ " <> showt i) (v !? i)
+
+readMemory ::
+  Members [State Program, Error ErrorMsg] r =>
+  MAddress ->
+  Sem r MValue
+readMemory addr = do
+  m <- gets memory
+  m !! addr
 
 opcode :: MValue -> Int
 opcode n = n `mod` 100
@@ -44,109 +91,137 @@ pmode n arg
   | n `div` (10 ^ (arg + 1)) `mod` 10 == 0 = PosMode
   | otherwise = ImmMode
 
-moveIp ::
+moveIpBy ::
   Member (State Program) r =>
   Int ->
   Sem r ()
-moveIp delta =
+moveIpBy delta =
   modify (\s -> s {ip = ip s + delta})
 
-computeOp3 ::
-  Member (State Program) r =>
-  (Int -> Int -> Int) ->
-  MValue ->
-  MValue ->
-  MAddress ->
-  Sem r ()
-computeOp3 f a b madd = do
-  modify (\s -> s {memory = memory s // [(madd, f a b)]})
-  moveIp 4
-
-parseParam ::
-  Member (State Program) r =>
-  ParameterMode ->
-  MAddress ->
-  Sem r (Maybe Int)
-parseParam mode addr = do
-  m <- gets memory
-  return $
-    m !? addr >>= \k ->
-      case mode of
-        PosMode -> m !? k
-        ImmMode -> return k
-
-assertSuccess ::
-  Member (State Program) r =>
-  Text ->
-  Maybe (Sem r ()) ->
-  Sem r ()
-assertSuccess msg Nothing = haltError msg
-assertSuccess _ (Just f) = f
-
-haltError ::
-  Member (State Program) r =>
-  Text ->
-  Sem r ()
-haltError msg = do
-  modify (\s -> s{ debug = Just msg})
-  haltProgram
-
-parseOp3 ::
+moveIpTo ::
   Member (State Program) r =>
   Int ->
-  (Int -> Int -> Int -> Sem r ()) ->
   Sem r ()
-parseOp3 k f = do
-  i <- gets ip
-  a <- parseParam (pmode k 1) (i + 1)
-  b <- parseParam (pmode k 2) (i + 2)
-  c <- parseParam (pmode k 3) (i + 3)
-  assertSuccess "parseOp3 failed" $ f <$> a <*> b <*> c
+moveIpTo ip' =
+  modify (\s -> s {ip = ip'})
 
-
--- readToAddr ::
---   Member (State Program) r =>
---   MAddress -> 
---   Sem r ()
--- readToAddr addr = do
---   inp <- gets input
---   assertSuccess "" $ do
---     k <- headMaybe inp
-
-  
+--------------------------------------------------------------------------------
 
 parseOp1 ::
-  Member (State Program) r =>
+  Members [State Program, Error ErrorMsg] r =>
   Int ->
-  (Int -> Sem r ()) ->
+  (Parameter -> Sem r ()) ->
   Sem r ()
 parseOp1 k f = do
   i <- gets ip
-  a <- parseParam (pmode k 1) (i + 1)
-  assertSuccess "parseOp1 failed" $ f <$> a
+  join $ f <$> ((pmode k 1, ) <$> readMemory (i + 1))
+
+parseOp2 ::
+  Members [State Program, Error ErrorMsg] r =>
+  Int ->
+  (Parameter -> Parameter -> Sem r ()) ->
+  Sem r ()
+parseOp2 k f = do
+  i <- gets ip
+  join $
+    f <$> ((pmode k 1, ) <$> readMemory (i + 1))
+      <*> ((pmode k 2, ) <$> readMemory (i + 2))
+
+parseOp3 ::
+  Members [State Program, Error ErrorMsg] r =>
+  Int ->
+  (Parameter -> Parameter -> Parameter -> Sem r ()) ->
+  Sem r ()
+parseOp3 k f = do
+  i <- gets ip
+  join $
+    f <$> ((pmode k 1, ) <$> readMemory (i + 1))
+      <*> ((pmode k 2, ) <$> readMemory (i + 2))
+      <*> ((pmode k 3, ) <$> readMemory (i + 3))
+
+readParam ::
+  Members [State Program, Error ErrorMsg] r =>
+  Parameter ->
+  Sem r Int
+readParam (ImmMode, val) = return val
+readParam (PosMode, addr) = readMemory addr
+
+withPosParam ::
+  Members [State Program, Error ErrorMsg] r =>
+  Parameter ->
+  (MAddress -> Sem r ()) ->
+  Sem r ()
+withPosParam (PosMode, addr) f = f addr
+withPosParam (ImmMode, _) _ = haltWithError (ErrorMsg "Expected positional parameter")
+
+opCombine2Write1 ::
+  Members [State Program, Error ErrorMsg] r =>
+  (Int -> Int -> Int) ->
+  Parameter ->
+  Parameter ->
+  Parameter ->
+  Sem r ()
+opCombine2Write1 f p1 p2 p3 = do
+  withPosParam p3 $ \addr -> do
+    k <- f <$> readParam p1 <*> readParam p2
+    writeMemory addr k
+    moveIpBy 4
 
 haltProgram :: Member (State Program) r => Sem r ()
 haltProgram = modify (\s -> s {running = False})
 
+opReadInput ::
+  Members [State Program, Error ErrorMsg] r =>
+  Parameter ->
+  Sem r ()
+opReadInput p =
+  withPosParam p $ \addr -> do
+    inp <- gets input
+    (x, input') <- assertJust "Intcode: End of input error" $ (,) <$> headMaybe inp <*> tailMaybe inp
+    writeMemory addr x
+    modify (\s -> s {input = input'})
+    moveIpBy 2
+
+opWriteOutput ::
+  Members [State Program, Error ErrorMsg] r =>
+  Parameter ->
+  Sem r ()
+opWriteOutput p = do
+  v <- readParam p
+  modify (\s -> s {output = v:output s})
+  moveIpBy 2
+
+opJumpCondition1 ::
+  Members [State Program, Error ErrorMsg] r =>
+  (Int -> Bool) ->
+  Parameter ->
+  Parameter ->
+  Sem r ()
+opJumpCondition1 pred p1 p2 = do
+  x1 <- readParam p1
+  x2 <- readParam p2
+  if pred x1
+     then moveIpTo x2
+     else moveIpBy 3
+
 runOp ::
-  Member (State Program) r =>
+  Members [State Program, Error ErrorMsg] r =>
   Sem r ()
 runOp = do
   i <- gets ip
   m <- gets memory
-  flip (maybe (haltError "Unknown")) (m !? i) $ \k ->
-    case opcode k of
-      1 -> parseOp3 k (computeOp3 (+))
-      2 -> parseOp3 k (computeOp3 (*))
-      -- 3 -> parseOp1 k ()
-      99 -> haltProgram
-
-runUntilEnd :: Member (State Program) r => Sem r ()
-runUntilEnd = do
-  r <- gets running
-  when r $ do
-    runOp
-    runUntilEnd
+  k <- m !! i
+  case opcode k of
+    1 -> parseOp3 k (opCombine2Write1 (+))
+    2 -> parseOp3 k (opCombine2Write1 (*))
+    3 -> parseOp1 k opReadInput
+    4 -> parseOp1 k opWriteOutput
+    5 -> parseOp2 k (opJumpCondition1 (/= 0))
+    6 -> parseOp2 k (opJumpCondition1 (== 0))
+    7 -> parseOp3 k (opCombine2Write1 (\a b -> if a < b then 1 else 0))
+    8 -> parseOp3 k (opCombine2Write1 (\a b -> if a == b then 1 else 0))
+    99 -> haltProgram
+    x -> haltWithError (ErrorMsg ("Unknown opcode: " <> showt x))
 
 initProgram :: VU.Vector Int -> [Int] -> Program
 initProgram intCode input =
@@ -159,15 +234,69 @@ initProgram intCode input =
       debug = Nothing
     }
 
+haltWithError ::
+  Members '[State Program] r =>
+  ErrorMsg ->
+  Sem r ()
+haltWithError msg = do
+  modify (\s -> s {debug = Just msg} )
+  haltProgram
+
+runUntilEnd ::
+  Members [State Program, Error ErrorMsg] r =>
+  Sem r ()
+runUntilEnd = do
+  r <- gets running
+  when r $ do
+    runOp
+    runUntilEnd
+
+runDebug ::
+  Members [State Program, Error ErrorMsg, Embed IO] r =>
+  Sem r ()
+runDebug = do
+  prg <- get @Program
+  embed (print prg)
+  embed getLine
+  r <- gets running
+  when r $ do
+    runOp
+    runDebug
+
 runProgram :: Program -> Program
 runProgram program = fst $
   runUntilEnd
+    & runError
+    & fmap (either haltWithError return)
+    & join
     & runState program
     & run
 
-main = do
-  t <- readFileUtf8 "inputs/day2.txt"
-  let intCode = VU.fromList (parseProblem t)
-      intCode' = intCode // [(1, 12), (2, 2)]
-  print $ runProgram (initProgram intCode' [1]) 
+runProgramDebug :: Program -> IO ()
+runProgramDebug program =
+  runDebug
+    & runError
+    & fmap (either haltWithError return)
+    & join
+    & runState program
+    & runM
+    & (print =<<) . fmap fst
 
+solvePart1 :: [Int] -> Maybe Int
+solvePart1 intcode =
+  let prg = runProgram (initProgram (VU.fromList intcode) [1])
+   in headMaybe $ output prg
+
+solvePart2 :: [Int] -> Maybe Int
+solvePart2 intcode =
+  let prg = runProgram (initProgram (VU.fromList intcode) [5])
+   in headMaybe $ output prg
+
+parseProblem :: Text -> [Int]
+parseProblem = T.split (== ',') >>> fmap (read . T.unpack)
+
+main = do
+  t <- readFileUtf8 "inputs/day5.txt"
+  let intcode = (parseProblem t)
+  print $ solvePart1 intcode
+  print $ solvePart2 intcode
