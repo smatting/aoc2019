@@ -50,6 +50,7 @@ executable aoc2019
       aoc2019
     , base
     , filepath
+    , rio
     , optparse-applicative
   if os(darwin)
     extra-libraries:
