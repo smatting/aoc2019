@@ -14,6 +14,7 @@ library
       Day5
       Day6
       Day7
+      Day9
   other-modules:
       Paths_aoc2019
   hs-source-dirs:
